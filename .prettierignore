@@ -1,0 +1,6 @@
+sfdx-project.json
+node_modules/
+.sf/
+.sfdx/
+.husky/
+coverage/

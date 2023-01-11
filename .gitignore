@@ -1,0 +1,12 @@
+.env
+node_modules/
+.vim-force.com/
+yarn.lock
+package-lock.json
+.sfdx/
+.localdevserver/
+debug.log
+tests/apex
+**/main/default/
+coverage/
+.sf/

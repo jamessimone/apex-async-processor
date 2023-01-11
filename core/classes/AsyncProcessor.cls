@@ -1,0 +1,194 @@
+public abstract without sharing class AsyncProcessor implements Database.Batchable<SObject>, Database.RaisesPlatformEvents, Process {
+  private Boolean getWasCalled = false;
+  private Boolean hasBeenEnqueuedAsync = false;
+  private String query;
+  private List<SObject> records;
+
+  // hack to wrap what would have been a Queueable into a batch process:
+  private static final String FALLBACK_QUERY = 'SELECT Id FROM Organization';
+
+  @TestVisible
+  private static BatchApexErrorEvent firedErrorEvent;
+
+  public interface Process {
+    String kickoff();
+  }
+
+  /**
+   * Process interface-related methods
+   */
+  public Process get(String query) {
+    return this.getProcess(query?.toLowerCase(), null);
+  }
+
+  public Process get(List<SObject> records) {
+    return this.getProcess(null, records);
+  }
+
+  public String kickoff() {
+    this.validate();
+    return Database.executeBatch(this);
+  }
+
+  /**
+   * Batchable implementation methods, including overrideable "finish" method
+   */
+
+  public Database.QueryLocator start(Database.BatchableContext bc) {
+    return Database.getQueryLocator(
+      this.query != null ? this.query : FALLBACK_QUERY
+    );
+  }
+
+  public void execute(
+    Database.BatchableContext bc,
+    List<SObject> localRecords
+  ) {
+    this.hasBeenEnqueuedAsync = false;
+    this.innerExecute(this.records != null ? this.records : localRecords);
+  }
+
+  public virtual void finish(Database.BatchableContext bc) {
+  }
+
+  // subclasses define their async processing logic using an override for "innerExecute"
+  protected abstract void innerExecute(List<SObject> records);
+
+  protected virtual Integer getLimitToBatch() {
+    return Limits.getLimitQueryRows();
+  }
+
+  private void validate() {
+    if (this.getWasCalled == false) {
+      throw new AsyncException(
+        'Please call get to retrieve the correct Process instance before calling kickoff'
+      );
+    }
+  }
+
+  private Process getProcess(String query, List<SObject> records) {
+    this.getWasCalled = true;
+    this.records = records;
+    this.query = query;
+
+    Integer recordCount = query == null
+      ? records.size()
+      : Database.countQuery(
+          query.replace(query.substringBeforeLast(' from '), 'select count() ')
+        );
+
+    Boolean shouldBatch = recordCount > this.getLimitToBatch();
+    Process process = this;
+    if (shouldBatch == false && this.getCanEnqueue()) {
+      process = new AsyncProcessorQueueable(this);
+    }
+    return process;
+  }
+
+  private Boolean getCanEnqueue() {
+    // only one Queueable can be started per async transaction
+    return this.hasBeenEnqueuedAsync == false ||
+      (this.isAsync() == false &&
+      Limits.getQueueableJobs() < Limits.getLimitQueueableJobs());
+  }
+
+  private Boolean isAsync() {
+    return System.isQueueable() || System.isBatch() || System.isFuture();
+  }
+
+  private class AsyncProcessorQueueable implements System.Queueable, System.Finalizer, Process {
+    private final AsyncProcessor processor;
+
+    public AsyncProcessorQueueable(AsyncProcessor processor) {
+      this.processor = processor;
+      this.processor.hasBeenEnqueuedAsync = true;
+    }
+
+    public String kickoff() {
+      this.processor.validate();
+      if (this.processor.getCanEnqueue() == false) {
+        return this.processor.kickoff();
+      }
+      return System.enqueueJob(this);
+    }
+
+    public void execute(System.QueueableContext qc) {
+      System.attachFinalizer(this);
+      if (this.processor.records == null && this.processor.query != null) {
+        this.processor.records = Database.query(this.processor.query);
+      }
+      this.processor.innerExecute(this.processor.records);
+      this.processor.finish(new QueueableToBatchableContext(qc));
+    }
+
+    public void execute(System.FinalizerContext fc) {
+      switch on fc?.getResult() {
+        when UNHANDLED_EXCEPTION {
+          this.fireBatchApexErrorEvent(fc);
+        }
+      }
+    }
+
+    private void fireBatchApexErrorEvent(System.FinalizerContext fc) {
+      String fullLengthJobScope = String.join(this.getRecordsInScope(), ',');
+      Integer jobScopeLengthLimit = 40000;
+      Integer textFieldLengthLimit = 5000;
+      // initializing a BatchApexErrorEvent works as of Spring 23
+      // but we can't promise it always will - use accordingly!
+      BatchApexErrorEvent errorEvent = new BatchApexErrorEvent(
+        AsyncApexJobId = fc.getAsyncApexJobId(),
+        DoesExceedJobScopeMaxLength = fullLengthJobScope.length() >
+          jobScopeLengthLimit,
+        ExceptionType = fc.getException().getTypeName(),
+        JobScope = this.getSafeSubstring(
+            fullLengthJobScope,
+            jobScopeLengthLimit
+          )
+          .removeEnd(','),
+        Message = this.getSafeSubstring(
+          fc.getException().getMessage(),
+          textFieldLengthLimit
+        ),
+        Phase = 'EXECUTE',
+        StackTrace = this.getSafeSubstring(
+          fc.getException().getStacktraceString(),
+          textFieldLengthLimit
+        )
+      );
+      firedErrorEvent = errorEvent;
+      EventBus.publish(errorEvent);
+    }
+
+    private List<String> getRecordsInScope() {
+      List<String> scope = new List<String>();
+      for (
+        Id recordId : new Map<Id, SObject>(this.processor.records).keySet()
+      ) {
+        scope.add(recordId);
+      }
+      return scope;
+    }
+
+    private String getSafeSubstring(String target, Integer maxLength) {
+      return target.length() > maxLength
+        ? target.substring(0, maxLength)
+        : target;
+    }
+  }
+
+  private class QueueableToBatchableContext implements Database.BatchableContext {
+    private final Id jobId;
+
+    public QueueableToBatchableContext(System.QueueableContext qc) {
+      this.jobId = qc.getJobId();
+    }
+
+    public Id getJobId() {
+      return this.jobId;
+    }
+
+    public Id getChildJobId() {
+      return null;
+    }
+  }
+}

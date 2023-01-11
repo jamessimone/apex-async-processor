@@ -1,0 +1,14 @@
+{
+    "packageDirectories": [
+        {
+            "path": "core",
+            "default": true
+        },
+        {
+            "path": "example-app"
+        }
+    ],
+    "namespace": "",
+    "sfdcLoginUrl": "https://login.salesforce.com",
+    "sourceApiVersion": "56.0"
+}

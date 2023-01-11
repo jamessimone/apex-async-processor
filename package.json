@@ -1,0 +1,22 @@
+{
+  "name": "apex-async-processor",
+  "version": "1.0.0",
+  "description": "Example repository showing how to abstract away which async framework is being used within Salesforce in favor of dynamically using the most appropriate solution for the problem at hand.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jamessimone/apex-async-processor"
+  },
+  "author": "james.simone",
+  "license": "MIT",
+  "devDependencies": {
+    "prettier-plugin-apex": "latest",
+    "prettier": "latest"
+  },
+  "keywords": [
+    "salesforce",
+    "async",
+    "batch",
+    "apex",
+    "queueable"
+  ]
+}
