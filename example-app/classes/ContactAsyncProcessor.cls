@@ -1,5 +1,5 @@
 public class ContactAsyncProcessor extends AsyncProcessor {
-  protected override void innerExecute(List<SObject> records) {
+  protected override void innerExecute(List<Object> records) {
     Map<Id, Account> accountsToUpdate = new Map<Id, Account>();
 
     for (Contact con : (List<Contact>) records) {

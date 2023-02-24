@@ -13,7 +13,7 @@ private class AsyncProcessorTests extends AsyncProcessor {
     finishWasFired = true;
   }
 
-  protected override void innerExecute(List<SObject> records) {
+  protected override void innerExecute(List<Object> records) {
     executeCallCounter++;
     executeWasFired = true;
   }
@@ -66,7 +66,7 @@ private class AsyncProcessorTests extends AsyncProcessor {
   }
 
   private virtual class FailProcessor extends AsyncProcessor {
-    protected override void innerExecute(List<SObject> records) {
+    protected override void innerExecute(List<Object> records) {
       throw new IllegalArgumentException('Fail');
     }
   }

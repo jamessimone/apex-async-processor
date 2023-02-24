@@ -3,8 +3,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   private Boolean hasBeenEnqueuedAsync = false;
   private String query;
   private AsyncProcessorQueueable queueable;
-
-  protected List<SObject> records;
+  private List<Object> records;
 
   // hack to wrap what would have been a Queueable into a batch process:
   private static final String FALLBACK_QUERY = 'SELECT Id FROM Organization';
@@ -23,7 +22,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     return this.getProcess(query?.toLowerCase(), null);
   }
 
-  public Process get(List<SObject> records) {
+  public Process get(List<Object> records) {
     return this.getProcess(null, records);
   }
 
@@ -39,7 +38,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
    * Batchable implementation methods, including overrideable "finish" method
    */
 
-  public Database.QueryLocator start(Database.BatchableContext bc) {
+  public virtual Database.QueryLocator start(Database.BatchableContext bc) {
     return Database.getQueryLocator(
       this.query != null ? this.query : FALLBACK_QUERY
     );
@@ -56,8 +55,8 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   public virtual void finish(Database.BatchableContext bc) {
   }
 
-  /** Subclasses define their async processing logic using an override for "innerExecute"**/
-  protected abstract void innerExecute(List<SObject> records);
+  // subclasses define their async processing logic using an override for "innerExecute"
+  protected abstract void innerExecute(List<Object> records);
 
   /** Subclasses can override this method to ensure finish is only called once if recursive queueables are involved */
   protected virtual Boolean isFinished() {
@@ -84,16 +83,19 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     }
   }
 
-  private Process getProcess(String query, List<SObject> records) {
+  private Process getProcess(String query, List<Object> records) {
     this.getWasCalled = true;
     this.records = records;
     this.query = query;
 
-    Integer recordCount = query == null
-      ? records.size()
-      : Database.countQuery(
-          query.replace(query.substringBeforeLast(' from '), 'select count() ')
-        );
+    Integer recordCount = 0;
+    if (records != null) {
+      recordCount = records.size();
+    } else if (query != null) {
+      recordCount = Database.countQuery(
+        query.replace(query.substringBeforeLast(' from '), 'select count() ')
+      );
+    }
 
     Boolean shouldBatch = recordCount > this.getLimitToBatch();
     Process process = this;
@@ -226,10 +228,15 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
 
     private List<String> getRecordsInScope() {
       List<String> scope = new List<String>();
-      for (
-        Id recordId : new Map<Id, SObject>(this.processor.records).keySet()
-      ) {
-        scope.add(recordId);
+      if (this.processor.records instanceof List<SObject>) {
+        for (
+          Id recordId : new Map<Id, SObject>(
+              (List<SObject>) this.processor.records
+            )
+            .keySet()
+        ) {
+          scope.add(recordId);
+        }
       }
       return scope;
     }
