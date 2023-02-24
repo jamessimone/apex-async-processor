@@ -10,3 +10,4 @@ tests/apex
 **/main/default/
 coverage/
 .sf/
+.vscode

@@ -11,7 +11,7 @@ Using this pattern greatly simplifies how asynchronous code is defined and run o
 
   ```java
   public class AsyncContactProcessorExample extends AsyncProcessor {
-    protected override void innerExecute(List<SObject> records) {
+    protected override void innerExecute(List<Object> records) {
       List<Contact> contacts = (List<Contact>) records;
       // do whatever processing here
     }
