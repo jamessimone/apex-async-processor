@@ -2,7 +2,9 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
   private Boolean getWasCalled = false;
   private Boolean hasBeenEnqueuedAsync = false;
   private String query;
-  private List<SObject> records;
+  private AsyncProcessorQueueable queueable;
+
+  protected List<SObject> records;
 
   // hack to wrap what would have been a Queueable into a batch process:
   private static final String FALLBACK_QUERY = 'SELECT Id FROM Organization';
@@ -27,6 +29,9 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
 
   public String kickoff() {
     this.validate();
+    if (this.queueable != null && this.getCanEnqueue()) {
+      return this.queueable.kickoff();
+    }
     return Database.executeBatch(this);
   }
 
@@ -51,8 +56,13 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
   public virtual void finish(Database.BatchableContext bc) {
   }
 
-  // subclasses define their async processing logic using an override for "innerExecute"
+  /** Subclasses define their async processing logic using an override for "innerExecute"**/
   protected abstract void innerExecute(List<SObject> records);
+
+  /** Subclasses can override this method to ensure finish is only called once if recursive queueables are involved */
+  protected virtual Boolean isFinished() {
+    return true;
+  }
 
   protected virtual Integer getLimitToBatch() {
     return Limits.getLimitQueryRows();
@@ -86,10 +96,20 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
   }
 
   private Boolean getCanEnqueue() {
-    // only one Queueable can be started per async transaction
-    return this.hasBeenEnqueuedAsync == false ||
-      (this.isAsync() == false &&
-      Limits.getQueueableJobs() < Limits.getLimitQueueableJobs());
+    Integer currentQueueableCount = Limits.getQueueableJobs();
+    // Sync transactions can enqueue up to 50 processes
+    // but only one Queueable can be started per async transaction
+    if (
+      this.hasBeenEnqueuedAsync == false &&
+      currentQueueableCount < Limits.getLimitQueueableJobs()
+    ) {
+      this.hasBeenEnqueuedAsync = this.isAsync();
+      return true;
+    } else if (this.isAsync()) {
+      return currentQueueableCount < 1;
+    } else {
+      return true;
+    }
   }
 
   private Boolean isAsync() {
@@ -101,7 +121,7 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
 
     public AsyncProcessorQueueable(AsyncProcessor processor) {
       this.processor = processor;
-      this.processor.hasBeenEnqueuedAsync = true;
+      this.processor.queueable = this;
     }
 
     public String kickoff() {
@@ -113,12 +133,16 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
     }
 
     public void execute(System.QueueableContext qc) {
+      // once we've enqueued, it's fine to reset this flag
+      this.processor.hasBeenEnqueuedAsync = false;
       System.attachFinalizer(this);
       if (this.processor.records == null && this.processor.query != null) {
         this.processor.records = Database.query(this.processor.query);
       }
       this.processor.innerExecute(this.processor.records);
-      this.processor.finish(new QueueableToBatchableContext(qc));
+      if (this.processor.isFinished()) {
+        this.processor.finish(new QueueableToBatchableContext(qc));
+      }
     }
 
     public void execute(System.FinalizerContext fc) {
