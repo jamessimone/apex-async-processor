@@ -116,7 +116,7 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
     return System.isQueueable() || System.isBatch() || System.isFuture();
   }
 
-  private class AsyncProcessorQueueable implements System.Queueable, System.Finalizer, Process {
+  private class AsyncProcessorQueueable implements Database.AllowsCallouts, System.Queueable, System.Finalizer, Process {
     private final AsyncProcessor processor;
 
     public AsyncProcessorQueueable(AsyncProcessor processor) {
