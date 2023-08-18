@@ -179,8 +179,11 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
           textFieldLengthLimit
         )
       );
-      firedErrorEvent = errorEvent;
-      EventBus.publish(errorEvent);
+
+      Database.SaveResult publishResult = EventBus.publish(errorEvent);
+      if (publishResult.isSuccess()) {
+        firedErrorEvent = errorEvent;
+      }
     }
 
     private List<String> getRecordsInScope() {
