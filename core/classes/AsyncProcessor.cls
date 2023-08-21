@@ -1,4 +1,4 @@
-public abstract without sharing class AsyncProcessor implements Database.Batchable<SObject>, Database.RaisesPlatformEvents, Process {
+public abstract without sharing class AsyncProcessor implements Database.AllowsCallouts, Database.Batchable<SObject>, Database.RaisesPlatformEvents, Process {
   private Boolean getWasCalled = false;
   private Boolean hasBeenEnqueuedAsync = false;
   private String query;
@@ -32,7 +32,7 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
     if (this.queueable != null && this.getCanEnqueue()) {
       return this.queueable.kickoff();
     }
-    return Database.executeBatch(this);
+    return Database.executeBatch(this, this.getBatchChunkSize());
   }
 
   /**
@@ -68,10 +68,18 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
     return Limits.getLimitQueryRows();
   }
 
+  protected virtual Integer getBatchChunkSize() {
+    return 2000;
+  }
+
+  protected virtual Integer getQueueableChunkSize() {
+    return this.getBatchChunkSize();
+  }
+
   private void validate() {
     if (this.getWasCalled == false) {
       throw new AsyncException(
-        'Please call get to retrieve the correct Process instance before calling kickoff'
+        'Please call get() to retrieve the correct Process instance before calling kickoff'
       );
     }
   }
@@ -118,6 +126,8 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
 
   private class AsyncProcessorQueueable implements Database.AllowsCallouts, System.Queueable, System.Finalizer, Process {
     private final AsyncProcessor processor;
+    private System.QueueableContext context;
+    private Boolean hasFinalizerBeenAttached = false;
 
     public AsyncProcessorQueueable(AsyncProcessor processor) {
       this.processor = processor;
@@ -129,19 +139,35 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
       if (this.processor.getCanEnqueue() == false) {
         return this.processor.kickoff();
       }
-      return System.enqueueJob(this);
+      // hack to prevent uncatchable System.AsyncException in Tests: "Maximum stack depth has been reached"
+      if (this.processor.hasBeenEnqueuedAsync && Test.isRunningTest()) {
+        this.execute(this.context);
+        return 'Running sync';
+      } else {
+        return System.enqueueJob(this);
+      }
     }
 
     public void execute(System.QueueableContext qc) {
       // once we've enqueued, it's fine to reset this flag
       this.processor.hasBeenEnqueuedAsync = false;
-      System.attachFinalizer(this);
+      if (this.hasFinalizerBeenAttached == false) {
+        this.context = qc;
+        this.hasFinalizerBeenAttached = true;
+        System.attachFinalizer(this);
+      }
       if (this.processor.records == null && this.processor.query != null) {
         this.processor.records = Database.query(this.processor.query);
       }
+
+      List<SObject> splitRecords = this.splitProcessorRecords();
       this.processor.innerExecute(this.processor.records);
-      if (this.processor.isFinished()) {
-        this.processor.finish(new QueueableToBatchableContext(qc));
+      if (splitRecords.isEmpty() == false) {
+        this.processor.records.clear();
+        this.processor.records.addAll(splitRecords);
+        this.kickoff();
+      } else if (this.processor.isFinished()) {
+        this.processor.finish(new QueueableToBatchableContext(this.context));
       }
     }
 
@@ -151,6 +177,18 @@ public abstract without sharing class AsyncProcessor implements Database.Batchab
           this.fireBatchApexErrorEvent(fc);
         }
       }
+    }
+
+    private List<SObject> splitProcessorRecords() {
+      List<SObject> splitRecords = new List<SObject>();
+      while (
+        this.processor.records.size() > this.processor.getQueueableChunkSize()
+      ) {
+        splitRecords.add(
+          this.processor.records.remove(this.processor.records.size() - 1)
+        );
+      }
+      return splitRecords;
     }
 
     private void fireBatchApexErrorEvent(System.FinalizerContext fc) {

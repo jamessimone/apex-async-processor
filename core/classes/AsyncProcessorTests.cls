@@ -7,6 +7,7 @@ private class AsyncProcessorTests extends AsyncProcessor {
   private static Integer executeCallCounter = 0;
   private static Boolean executeWasFired = false;
   private static Boolean finishWasFired = false;
+  private static Integer queueableChunkLimit = 1;
 
   public override void finish(Database.BatchableContext bc) {
     finishWasFired = true;
@@ -21,6 +22,10 @@ private class AsyncProcessorTests extends AsyncProcessor {
     return batchLimit;
   }
 
+  protected override Integer getQueueableChunkSize() {
+    return queueableChunkLimit;
+  }
+
   @IsTest
   static void throwsWhenGetIsNotCalled() {
     Exception ex;
@@ -33,7 +38,7 @@ private class AsyncProcessorTests extends AsyncProcessor {
 
     Assert.isInstanceOfType(ex, AsyncException.class);
     Assert.areEqual(
-      'Please call get to retrieve the correct Process instance before calling kickoff',
+      'Please call get() to retrieve the correct Process instance before calling kickoff',
       ex.getMessage()
     );
   }
@@ -116,5 +121,23 @@ private class AsyncProcessorTests extends AsyncProcessor {
     );
     Assert.isTrue(executeWasFired);
     Assert.isTrue(finishWasFired);
+  }
+
+  @IsTest
+  static void requeuesWhenRecordSizeOverQueueableLimit() {
+    List<Contact> contacts = new List<Contact>{
+      new Contact(Id = '003000000000001'),
+      new Contact(Id = '003000000000002')
+    };
+    Assert.isTrue(
+      contacts.size() > queueableChunkLimit,
+      'Test has started under wrong conditions'
+    );
+
+    Test.startTest();
+    new AsyncProcessorTests().get(contacts).kickoff();
+    Test.stopTest();
+
+    Assert.areEqual(2, executeCallCounter);
   }
 }

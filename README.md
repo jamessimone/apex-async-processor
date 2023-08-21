@@ -7,7 +7,7 @@ Using this pattern greatly simplifies how asynchronous code is defined and run o
 - clone the repository or copy/paste the [AsyncProcessor](../../blob/main/core/classes/AsyncProcessor.cls) and [AsyncProcessorTests](../../blob/main/core/classes/AsyncProcessorTests.cls) files to your org
 - extend the `AsyncProcessor`, defining code you'd like to have processed asynchronously:
 
-  - also add any additional interfaces you need, like `Database.AllowsCallouts` or `Database.Stateful` as is appropriate
+  - also add any additional interfaces you need, like `Database.Stateful` (as is appropriate)
 
   ```java
   public class AsyncContactProcessorExample extends AsyncProcessor {
@@ -31,7 +31,7 @@ For query-based usages, `AsyncProcessor` will automatically choose whether to ba
 
 ## Further Examples
 
-Here's an example lowering the `getLimitToBatch()` amount from 50k to 10k records. This could be really useful if the data you're passing in might otherwise blow up the heap size limit, for example.
+Here's an example lowering the `getLimitToBatch()` amount from 50k to 10k records. This could be really useful if the data you're passing in might otherwise blow up the heap size limit.
 
 ```java
 public without sharing class LowerLimitAsyncProcessor {
