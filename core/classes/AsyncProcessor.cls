@@ -73,7 +73,9 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   }
 
   protected virtual Integer getQueueableChunkSize() {
-    return this.getBatchChunkSize();
+    return this.records != null
+      ? this.records.size()
+      : this.getBatchChunkSize();
   }
 
   private void validate() {
@@ -126,8 +128,8 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
 
   private class AsyncProcessorQueueable implements Database.AllowsCallouts, System.Queueable, System.Finalizer, Process {
     private final AsyncProcessor processor;
-    private System.QueueableContext context;
     private Boolean hasFinalizerBeenAttached = false;
+    private Boolean shouldRequeue = false;
 
     public AsyncProcessorQueueable(AsyncProcessor processor) {
       this.processor = processor;
@@ -139,20 +141,15 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
       if (this.processor.getCanEnqueue() == false) {
         return this.processor.kickoff();
       }
-      // hack to prevent uncatchable System.AsyncException in Tests: "Maximum stack depth has been reached"
-      if (this.processor.hasBeenEnqueuedAsync && Test.isRunningTest()) {
-        this.execute(this.context);
-        return 'Running sync';
-      } else {
-        return System.enqueueJob(this);
-      }
+
+      return System.enqueueJob(this);
     }
 
     public void execute(System.QueueableContext qc) {
       // once we've enqueued, it's fine to reset this flag
       this.processor.hasBeenEnqueuedAsync = false;
+
       if (this.hasFinalizerBeenAttached == false) {
-        this.context = qc;
         this.hasFinalizerBeenAttached = true;
         System.attachFinalizer(this);
       }
@@ -162,12 +159,13 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
 
       List<SObject> splitRecords = this.splitProcessorRecords();
       this.processor.innerExecute(this.processor.records);
+
       if (splitRecords.isEmpty() == false) {
+        this.shouldRequeue = true;
         this.processor.records.clear();
         this.processor.records.addAll(splitRecords);
-        this.kickoff();
       } else if (this.processor.isFinished()) {
-        this.processor.finish(new QueueableToBatchableContext(this.context));
+        this.processor.finish(new QueueableToBatchableContext(qc));
       }
     }
 
@@ -175,6 +173,12 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
       switch on fc?.getResult() {
         when UNHANDLED_EXCEPTION {
           this.fireBatchApexErrorEvent(fc);
+        }
+        when else {
+          if (this.shouldRequeue) {
+            this.shouldRequeue = false;
+            this.kickoff();
+          }
         }
       }
     }
