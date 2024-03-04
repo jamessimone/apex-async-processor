@@ -73,9 +73,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   }
 
   protected virtual Integer getQueueableChunkSize() {
-    return this.records != null
-      ? this.records.size()
-      : this.getBatchChunkSize();
+    return this.records?.size() ?? this.getBatchChunkSize();
   }
 
   private void validate() {
@@ -141,6 +139,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
       if (this.processor.getCanEnqueue() == false) {
         return this.processor.kickoff();
       }
+      this.hasFinalizerBeenAttached = false;
 
       return System.enqueueJob(this);
     }
