@@ -140,4 +140,36 @@ private class AsyncProcessorTests extends AsyncProcessor {
 
     Assert.areEqual(2, executeCallCounter);
   }
+
+  @IsTest
+  static void worksWithOrderBy() {
+    Exception ex;
+
+    try {
+      Test.startTest();
+      new AsyncProcessorTests()
+        .get('SELECT Id FROM Contact ORDER BY AccountId')
+        .kickoff();
+      Test.stopTest();
+    } catch (Exception e) {
+      ex = e;
+    }
+
+    Assert.isNull(ex);
+  }
+
+  @IsTest
+  static void worksWithAllRows() {
+    Exception ex;
+
+    try {
+      Test.startTest();
+      new AsyncProcessorTests().get('SELECT Id FROM Task ALL ROWS').kickoff();
+      Test.stopTest();
+    } catch (Exception e) {
+      ex = e;
+    }
+
+    Assert.isNull(ex);
+  }
 }

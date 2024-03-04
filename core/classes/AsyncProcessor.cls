@@ -89,11 +89,18 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     this.records = records;
     this.query = query;
 
-    Integer recordCount = query == null
-      ? records.size()
-      : Database.countQuery(
-          query.replace(query.substringBeforeLast(' from '), 'select count() ')
-        );
+
+    Integer recordCount;
+    if (query == null) {
+      recordCount = records.size();
+    } else {
+      String countQuery = query.replace(query.substringBeforeLast(' from '), 'select count() ');
+      Integer possibleOrderStatement = query.lastIndexOfIgnoreCase('order by');
+      if (possibleOrderStatement > -1) {
+        countQuery = countQuery.replace(query.substring(possibleOrderStatement), '');
+      }
+      recordCount = Database.countquery(countQuery);
+    }
 
     Boolean shouldBatch = recordCount > this.getLimitToBatch();
     Process process = this;
