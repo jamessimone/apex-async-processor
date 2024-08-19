@@ -3,5 +3,16 @@
     "singleQuote": true,
     "tabWidth": 2,
     "printWidth": 80,
-    "arrowParens": "avoid"
+    "arrowParens": "avoid",
+    "plugins": [
+        "prettier-plugin-apex"
+    ],
+    "overrides": [
+        {
+            "files": "*.{cls, apex}",
+            "options": {
+                "parser": "apex"
+            }
+        }
+    ]
 }

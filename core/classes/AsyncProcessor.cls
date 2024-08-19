@@ -5,6 +5,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   private AsyncProcessorQueueable queueable;
 
   protected List<SObject> records;
+  private final List<SObject> chunkRecords = new List<SObject>();
 
   // hack to wrap what would have been a Queueable into a batch process:
   private static final String FALLBACK_QUERY = 'SELECT Id FROM Organization';
@@ -40,9 +41,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
    */
 
   public Database.QueryLocator start(Database.BatchableContext bc) {
-    return Database.getQueryLocator(
-      this.query != null ? this.query : FALLBACK_QUERY
-    );
+    return Database.getQueryLocator(this.query ?? FALLBACK_QUERY);
   }
 
   public void execute(
@@ -50,7 +49,17 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     List<SObject> localRecords
   ) {
     this.hasBeenEnqueuedAsync = false;
-    this.innerExecute(this.records != null ? this.records : localRecords);
+    Integer chunkSize = this.getBatchChunkSize();
+    if (this.query == null && this.records != null) {
+      while (this.records.size() > chunkSize) {
+        this.chunkRecords.add(this.records.remove(this.records.size() - 1));
+      }
+    }
+    this.innerExecute(this.records ?? localRecords);
+    if (this.chunkRecords.isEmpty() == false) {
+      this.records = new List<SObject>(this.chunkRecords);
+      this.kickoff();
+    }
   }
 
   public virtual void finish(Database.BatchableContext bc) {
@@ -81,6 +90,13 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
       throw new AsyncException(
         'Please call get() to retrieve the correct Process instance before calling kickoff'
       );
+    } else if (
+      System.isBatch() &&
+      this.queueable == null &&
+      this.chunkRecords.isEmpty() == false
+    ) {
+      this.queueable = new AsyncProcessorQueueable(this);
+      this.chunkRecords.clear();
     }
   }
 
@@ -89,25 +105,30 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     this.records = records;
     this.query = query;
 
-
-    Integer recordCount;
-    if (query == null) {
-      recordCount = records.size();
-    } else {
-      String countQuery = query.replace(query.substringBeforeLast(' from '), 'select count() ');
-      Integer possibleOrderStatement = query.lastIndexOfIgnoreCase('order by');
-      if (possibleOrderStatement > -1) {
-        countQuery = countQuery.replace(query.substring(possibleOrderStatement), '');
-      }
-      recordCount = Database.countquery(countQuery);
-    }
-
+    Integer recordCount = query == null
+      ? records.size()
+      : this.getRecordCount(query);
     Boolean shouldBatch = recordCount > this.getLimitToBatch();
     Process process = this;
     if (shouldBatch == false && this.getCanEnqueue()) {
       process = new AsyncProcessorQueueable(this);
     }
     return process;
+  }
+
+  private Integer getRecordCount(String query) {
+    String countQuery = query.replace(
+      query.substringBeforeLast(' from '),
+      'select count() '
+    );
+    Integer possibleOrderStatement = query.lastIndexOfIgnoreCase('order by');
+    if (possibleOrderStatement > -1) {
+      countQuery = countQuery.replace(
+        query.substring(possibleOrderStatement),
+        ''
+      );
+    }
+    return Database.countquery(countQuery);
   }
 
   private Boolean getCanEnqueue() {

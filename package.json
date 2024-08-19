@@ -9,8 +9,8 @@
   "author": "james.simone",
   "license": "MIT",
   "devDependencies": {
-    "prettier-plugin-apex": "latest",
-    "prettier": "latest"
+    "prettier": "latest",
+    "prettier-plugin-apex": "^2.1.4"
   },
   "keywords": [
     "salesforce",
