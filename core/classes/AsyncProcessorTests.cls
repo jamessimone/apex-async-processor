@@ -172,4 +172,14 @@ private class AsyncProcessorTests extends AsyncProcessor {
 
     Assert.isNull(ex);
   }
+
+  @IsTest
+  static void caseInsensitiveFromAndOrderBy() {
+    Organization orgRecord = [SELECT Id FROM Organization LIMIT 1];
+
+    String mixedCaseQuery = 'sEleCT id FrOM Organization Where Id = \'' + orgRecord.Id + '\' OrDeR bY Name';
+    Integer count = new AsyncProcessorTests().getRecordCount(mixedCaseQuery);
+
+    Assert.areEqual(1, count, 'Expected to count 1 Organization record with mixed-case query.');
+  }
 }
