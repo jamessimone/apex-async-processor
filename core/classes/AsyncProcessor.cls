@@ -116,7 +116,6 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     return process;
   }
 
-  @TestVisible
   private Integer getRecordCount(String query) {
     String lowerQuery = query.toLowerCase();
     Integer fromIndex = lowerQuery.lastIndexOf(' from ');
