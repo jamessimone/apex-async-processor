@@ -3,6 +3,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   private Boolean hasBeenEnqueuedAsync = false;
   private String query;
   private AsyncProcessorQueueable queueable;
+  private Id asyncJobId;
 
   protected List<SObject> records;
   private final List<SObject> chunkRecords = new List<SObject>();
@@ -173,6 +174,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     }
 
     public void execute(System.QueueableContext qc) {
+      this.processor.setAsyncJobId(qc.getJobId());
       // once we've enqueued, it's fine to reset this flag
       this.processor.hasBeenEnqueuedAsync = false;
 
@@ -270,6 +272,14 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
         ? target.substring(0, maxLength)
         : target;
     }
+  }
+
+  public void setAsyncJobId(Id jobId) {
+    this.asyncJobId = jobId;
+  }
+
+  public Id getAsyncJobId() {
+      return this.asyncJobId;
   }
 
   private class QueueableToBatchableContext implements Database.BatchableContext {
