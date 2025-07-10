@@ -274,11 +274,11 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
     }
   }
 
-  public void setAsyncJobId(Id jobId) {
+  private void setAsyncJobId(Id jobId) {
     this.asyncJobId = jobId;
   }
 
-  public Id getAsyncJobId() {
+  protected Id getAsyncJobId() {
       return this.asyncJobId;
   }
 
