@@ -172,4 +172,21 @@ private class AsyncProcessorTests extends AsyncProcessor {
 
     Assert.isNull(ex);
   }
+
+  @IsTest
+  static void caseInsensitiveFromAndOrderBy() {
+    Exception ex;
+    Organization orgRecord = [SELECT Id FROM Organization LIMIT 1];
+    String mixedCaseQuery = 'sEleCT id FrOM Organization Where Id = \'' + orgRecord.Id + '\' OrDeR bY Name';
+    
+    try {
+      Test.startTest();
+      new AsyncProcessorTests().get(mixedCaseQuery).kickoff();
+      Test.stopTest();
+    } catch (Exception e) {
+      ex = e;
+    }
+
+    Assert.isNull(ex, 'Expected no exception when using mixed-case SOQL.');
+  }
 }

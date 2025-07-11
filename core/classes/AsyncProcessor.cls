@@ -22,7 +22,7 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
    * Process interface-related methods
    */
   public Process get(String query) {
-    return this.getProcess(query?.toLowerCase(), null);
+    return this.getProcess(query, null);
   }
 
   public Process get(List<SObject> records) {
@@ -118,17 +118,15 @@ public abstract without sharing class AsyncProcessor implements Database.AllowsC
   }
 
   private Integer getRecordCount(String query) {
-    String countQuery = query.replace(
-      query.substringBeforeLast(' from '),
-      'select count() '
-    );
-    Integer possibleOrderStatement = query.lastIndexOfIgnoreCase('order by');
-    if (possibleOrderStatement > -1) {
-      countQuery = countQuery.replace(
-        query.substring(possibleOrderStatement),
-        ''
-      );
-    }
+    String lowerQuery = query.toLowerCase();
+    Integer fromIndex = lowerQuery.lastIndexOf(' from ');
+    Integer orderByIndex = lowerQuery.lastIndexOf('order by');
+
+    String fromClause = (orderByIndex > -1)
+        ? query.substring(fromIndex, orderByIndex)
+        : query.substring(fromIndex);
+
+    String countQuery = 'SELECT count()' + fromClause;
     return Database.countquery(countQuery);
   }
 
